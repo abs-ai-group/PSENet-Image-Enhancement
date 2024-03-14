@@ -1,4 +1,3 @@
-import argparse
 import glob
 import os
 
@@ -19,32 +18,33 @@ def read_pytorch_lightning_state_dict(ckpt):
     new_state_dict = {}
     for k, v in ckpt["state_dict"].items():
         if k.startswith("model."):
-            new_state_dict[k[len("model.") :]] = v
+            new_state_dict[k[len("model."):]] = v
         else:
             new_state_dict[k] = v
     return new_state_dict
 
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--checkpoint", type=str, default="../pretrained/afifi.pth")
-parser.add_argument("--input_dir", type=str, default="samples")
-parser.add_argument("--output_dir", type=str, default="output")
-
-args = parser.parse_args()
-
 model = UnetTMO()
-state_dict = read_pytorch_lightning_state_dict(torch.load(args.checkpoint))
+state_dict = read_pytorch_lightning_state_dict(torch.load("../pretrained/afifi.pth"))
 model.load_state_dict(state_dict)
 model.eval()
 model.cuda()
 
-if not os.path.exists(args.output_dir):
-    os.makedirs(args.output_dir)
-
-input_images = glob.glob(os.path.join(args.input_dir, "*"))
-for path in input_images:
-    print("Process:", path)
-    image = read_image(path).cuda()
-    with torch.no_grad():
-        output, _ = model(image)
-    torchvision.utils.save_image(output, path.replace(args.input_dir, args.output_dir))
+ds = "/srv/aic"
+dataset_path = os.path.join(ds, "Fisheye_deblur")
+for split in ['train', 'val', 'test']:
+    input_dir = os.path.join(dataset_path, split, 'images')
+    if not os.path.exists(input_dir.replace("Fisheye_deblur", "Fisheye_contrast")):
+        os.makedirs(input_dir.replace("Fisheye_deblur", "Fisheye_contrast"))
+    images = glob.glob(input_dir + '/*')
+    assert len(images) != 0
+    for image_name in images:
+        camera_number, time, _ = image_name.split("camera")[1].split("_")
+        if time in ["N", "E"]:
+            print("Process:", image_name)
+            image = read_image(image_name).cuda()
+            with torch.no_grad():
+                output, _ = model(image)
+            torchvision.utils.save_image(output, image_name.replace("Fisheye_deblur", "Fisheye_contrast"))
+        else:
+            continue
